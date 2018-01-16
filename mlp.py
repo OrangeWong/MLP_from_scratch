@@ -4,7 +4,7 @@ import numpy as np
 class MLP:
     """The class is the implementation of multi layer perception (or neural network)."""
     def __init__(self, hidden_layer_sizes=(5,), activation=np.tanh, learning_rate=0.1, max_iter=2000, tol=0.05,
-                 momentum=None):
+                 momentum=0.9, random_seed=1985):
         """
         Args:
             hidden_layer_sizes(tuple): A tuple represents the number of neurons for each hidden layers. Default: (5,).
@@ -18,12 +18,14 @@ class MLP:
         self.max_iter = max_iter
         self.tol = tol
         self.momentum = momentum
+        self.random_seed = random_seed
         self.weights = None
         self._product_sums = None
         self._outputs = None
         self._derivatives = None
         self._errors = None
         self._inputs = None
+        self._velocity = None
 
     @staticmethod
     def d_tanh(x):
@@ -32,7 +34,6 @@ class MLP:
 
     def _initiate_weights(self, input_dimension):
         """This function initiates the weights in the neural network based on the parameters passed to the class."""
-        np.random.seed(4353453)
         weights = []
         for layer in range(len(self.hidden_layer_sizes) + 1):
             # When layer = 0, this is the weight connecting the input to the first hidden layer
@@ -115,8 +116,16 @@ class MLP:
 
     def _update_weights(self):
         """This function uses the calculated results in back propagation to update the weights"""
-        for layer in range(len(self.hidden_layer_sizes) + 1):
-            self.weights[layer] -= self.learning_rate * self._derivatives[-1 - layer]
+        if self.momentum is not None:
+            # initiate the velocity
+            self._velocity = [np.zeros_like(v) for v in self.weights]
+            for layer in range(len(self.hidden_layer_sizes) + 1):
+                self._velocity[layer] = self.momentum * self._velocity[layer] \
+                                        - self.learning_rate * self._derivatives[-1 - layer]
+                self.weights[layer] += self._velocity[layer]
+        else:
+            for layer in range(len(self.hidden_layer_sizes) + 1):
+                self.weights[layer] -= self.learning_rate * self._derivatives[-1 - layer]
 
     def _should_stop(self, mse, iters):
         if mse is None:
@@ -135,29 +144,29 @@ class MLP:
             X (array): The data stores the attributes.
             y (array): The data stores the labels.
         """
+        np.random.seed(self.random_seed)
         self._initiate_weights(X.shape[1])
-        #print(self.weights)
         iters = 0
         mse = None
         while not self._should_stop(mse, iters):
             iters += 1
-            random_number = np.random.randint(0, X.shape[0])
-            x_s, y_s = X[random_number, :], y[random_number]
-            self._feed_forward(x_s)
-            self._back_propagation(y_s)
-            self._update_weights()
-
+            for observation in range(X.shape[0]):
+                x_s, y_s = X[observation, :], y[observation]
+                self._feed_forward(x_s)
+                self._back_propagation(y_s)
+                self._update_weights()
+            indexes = np.random.permutation(X.shape[0])
+            X, y = X[indexes, :], y[indexes]
             y_predict = self.predict(X)
             mse = self._calculate_mse(y_predict, y)
-
             print(iters, '-iters, mse: ', mse, 'predict: ', y_predict)
-        print(self.weights)
 
 
 if __name__ == "__main__":
     import numpy as np
 
-    testobject = MLP(hidden_layer_sizes=(2, ), tol=0.05)
+    testobject = MLP(hidden_layer_sizes=(2, ), tol=0.05, max_iter=5000,
+                     random_seed=315, momentum=0.9)
 
     X = np.array([[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]])
     y = np.array([-0.5, 0.5, 0.5, -0.5])
